@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商家信息</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <style>
+        body {
+            padding-top: 60px; 
+        }
+        @media (max-width: 767px) {
+            body {
+                padding-top: 0; 
+            }
+        }
+
+        .table th, .table td {
+            max-width: 100px; /* 調整最大寬度，根據需要調整數值 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-3">
+        <h2>商家信息</h2>
+
+        <!-- 添加表單元素，讓使用者輸入關鍵字和選擇縣市 -->
+        <form id="searchForm">
+            <div class="form-group">
+                <label for="keyword">請輸入您要搜尋的關鍵字：</label>
+                <input type="text" class="form-control" id="keyword" placeholder="請輸入關鍵字">
+            </div>
+            <div class="form-group">
+                <label for="city">選擇縣市：</label>
+                <select class="form-control" id="city">
+                    <option value="taipei">台北</option>
+                    <option value="newtaipei">新北</option>
+                    <option value="taichung">台中</option>
+                    <option value="kaohsiung">高雄</option>
+                    <option value="taoyuan">桃園</option>
+                    <option value="tainan">台南</option>
+                    <option value="hsinchu">新竹</option>
+                    <option value="keelung">基隆</option>
+                    <option value="yilan">宜蘭</option>
+                    <option value="changhua">彰化</option>
+                    <option value="miaoli">苗栗</option>
+                    <option value="nantou">南投</option>
+                    <option value="yunlin">雲林</option>
+                    <option value="pingtung">屏東</option>
+                    <option value="hualien">花蓮</option>
+                    <option value="taitung">台東</option>
+                    <option value="penghu">澎湖</option>
+                    <option value="kinmen">金門</option>
+                    <option value="lienchiang">連江</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="searchStores()">搜尋</button>
+        </form>
+
+        <table class="table table-bordered mt-3">
+            <thead>
+                <tr>
+                    <th>店名</th>
+                    <th>地址</th>
+                    <th>評分</th>  
+                    <th>電話</th>
+                    <th>營業時間</th>
+                </tr>
+            </thead>
+            <tbody id="storeTableBody">
+                <!-- 表格內容將在這裡插入 -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 使用 async defer 屬性和回調函數載入 Google Maps API -->
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDiikvv0xfSbvAI19VwhWk6xKoJm11snd8&libraries=places,geometry&language=zh-TW"></script>
+
+    <script>
+        let nextPageToken = null; // 新增一個變數用來保存下一頁的 token
+
+        function searchStores() {
+            const keyword = document.getElementById('keyword').value;
+            const selectedCity = document.getElementById('city').value; // 取得選擇的縣市
+            console.log("使用者輸入的關鍵字:", keyword);
+            console.log("選擇的縣市:", selectedCity);
+
+            const tableBody = document.getElementById('storeTableBody');
+            tableBody.innerHTML = '';
+
+            const service = new google.maps.places.PlacesService(document.createElement('div'));
+            const cityCoordinates = getCityCoordinates(selectedCity); // 取得選擇縣市的座標
+            const cityRadius = getCityRadius(selectedCity); // 取得選擇縣市的範圍
+
+            if (!cityCoordinates) {
+                console.error('找不到選擇縣市的座標');
+                return;
+            }
+
+            const request = {
+                keyword: keyword,
+                location: cityCoordinates,
+                radius: cityRadius,
+                fields: ['name', 'vicinity', 'rating', 'geometry', 'place_id'],
+                language: 'zh-TW',
+            };
+
+            // 將分頁 token 加到 request 中
+            if (nextPageToken) {
+                request.pagetoken = nextPageToken;
+            }
+
+            service.nearbySearch(request, (results, status, pagination) => {
+                console.log('搜尋結果:', results);
+                console.log('搜尋狀態:', status);
+
+                if (status === 'OK') {
+                    // 更新下一頁 token
+                    nextPageToken = pagination.hasNextPage ? pagination.nextPage() : null;
+
+                    results.forEach(store => {
+                        const detailsRequest = {
+                            placeId: store.place_id,
+                            fields: ['name', 'formatted_address', 'formatted_phone_number', 'rating', 'opening_hours', 'geometry'],
+                            language: 'zh-TW',
+                        };
+
+                        service.getDetails(detailsRequest, (details, detailsStatus) => {
+                            if (detailsStatus === 'OK') {
+                                console.log('商家詳細信息:', details);
+
+                                // 檢查商家是否在選擇的縣市範圍內
+                                if (isStoreInCity(details, selectedCity)) {
+                                    const row = tableBody.insertRow();
+                                    row.insertCell(0).innerText = details.name;
+                                    row.insertCell(1).innerHTML = details.formatted_address;
+                                    row.insertCell(2).innerText = details.rating || 'N/A';
+                                    row.insertCell(3).innerText = details.formatted_phone_number || 'N/A';
+                                    row.insertCell(4).innerText = details.opening_hours && details.opening_hours.weekday_text
+                                        ? details.opening_hours.weekday_text.join('\n')
+                                        : 'N/A';
+                                }
+                            } else {
+                                console.error('無法取得商家詳細信息:', detailsStatus);
+                            }
+                        });
+                    });
+                } else {
+                    console.error('搜尋失敗:', status);
+                }
+            });
+        }
+
+        // 檢查商家是否在選擇的縣市範圍內
+        function isStoreInCity(storeDetails, selectedCity) {
+            const storeLocation = storeDetails.geometry.location;
+            const cityCoordinates = getCityCoordinates(selectedCity);
+            const cityRadius = getCityRadius(selectedCity);
+
+            if (!cityCoordinates || !storeLocation) {
+                return false;
+            }
+
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(cityCoordinates, storeLocation);
+
+            return distance <= cityRadius;
+        }
+
+        // 根據選擇的縣市返回對應的座標
+        function getCityCoordinates(city) {
+            switch (city) {
+                case 'taipei':
+                    return new google.maps.LatLng(25.033, 121.565);
+                case 'newtaipei':
+                    return new google.maps.LatLng(25.012, 121.465);
+                case 'taichung':
+                    return new google.maps.LatLng(24.147, 120.675);
+                case 'kaohsiung':
+                    return new google.maps.LatLng(22.627, 120.301);
+                case 'taoyuan':
+                    return new google.maps.LatLng(24.993, 121.300);
+                case 'tainan':
+                    return new google.maps.LatLng(23.000, 120.225);
+                case 'hsinchu':
+                    return new google.maps.LatLng(24.804, 120.971);
+                case 'keelung':
+                    return new google.maps.LatLng(25.129, 121.741);
+                case 'yilan':
+                    return new google.maps.LatLng(24.702, 121.747);
+                case 'changhua':
+                    return new google.maps.LatLng(24.073, 120.542);
+                case 'miaoli':
+                    return new google.maps.LatLng(24.557, 120.985);
+                case 'nantou':
+                    return new google.maps.LatLng(23.868, 120.963);
+                case 'yunlin':
+                    return new google.maps.LatLng(23.709, 120.431);
+                case 'pingtung':
+                    return new google.maps.LatLng(22.551, 120.548);
+                case 'hualien':
+                    return new google.maps.LatLng(23.991, 121.601);
+                case 'taitung':
+                    return new google.maps.LatLng(22.752, 121.148);
+                case 'penghu':
+                    return new google.maps.LatLng(23.571, 119.579);
+                case 'kinmen':
+                    return new google.maps.LatLng(24.436, 118.317);
+                case 'lienchiang':
+                    return new google.maps.LatLng(26.333, 119.952);
+                default:
+                    return null;
+            }
+        }
+
+        function getCityRadius(city) {
+            switch (city) {
+                case 'taipei':
+                    return 20000; // 台北市半徑 20 公里
+                case 'newtaipei':
+                    return 18000; // 新北市半徑 25 公里
+                case 'taichung':
+                    return 18000; // 台中市半徑 18 公里
+                case 'kaohsiung':
+                    return 15000; // 高雄市半徑 15 公里
+                case 'taoyuan':
+                    return 20000; // 桃園市半徑 20 公里
+                case 'tainan':
+                    return 15000; // 台南市半徑 15 公里
+                case 'hsinchu':
+                    return 12000; // 新竹市半徑 12 公里
+                case 'keelung':
+                    return 8000; // 基隆市半徑 8 公里
+                case 'yilan':
+                    return 12000; // 宜蘭縣半徑 12 公里
+                case 'changhua':
+                    return 10000; // 彰化縣半徑 10 公里
+                case 'miaoli':
+                    return 10000; // 苗栗縣半徑 10 公里
+                case 'nantou':
+                    return 12000; // 南投縣半徑 12 公里
+                case 'yunlin':
+                    return 10000; // 雲林縣半徑 10 公里
+                case 'pingtung':
+                    return 11000; // 屏東縣半徑 11 公里
+                case 'hualien':
+                    return 10000; // 花蓮縣半徑 10 公里
+                case 'taitung':
+                    return 10000; // 台東縣半徑 10 公里
+                case 'penghu':
+                    return 8000; // 澎湖縣半徑 8 公里
+                case 'kinmen':
+                    return 6000; // 金門縣半徑 6 公里
+                case 'lienchiang':
+                    return 4000; // 連江縣半徑 4 公里
+                default:
+                    return 20000; // 預設半徑 20 公里
+            }
+        }
+    </script>
+
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+        integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+        crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+        integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+        crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+        integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+        crossorigin="anonymous"></script>
+</body>
+</html>
